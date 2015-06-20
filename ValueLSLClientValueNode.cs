@@ -20,7 +20,7 @@ namespace VVVV.Nodes
 	
 	//ISpread <double>
 	#region PluginInfo
-	[PluginInfo(Name = "LSLClientValue", Category = "Value", Help = "Basic template with one value in/out", Tags = "")]
+	[PluginInfo(Name = "LSLClientValue", Category = "Value", Help = "Lab Streaming Layer receiving protocol", Tags = "lsl")]
 	#endregion PluginInfo
 	
 	public class ValueLSLClientValueNode : IPluginEvaluate
@@ -30,10 +30,10 @@ namespace VVVV.Nodes
 		
 		#region fields & pins
 		[Input("StreamType", DefaultString = "EEG", IsSingle = true)]
-		public ISpread<string> FResourceType;
+		public IDiffSpread<string> FResourceType;
 		
 	    [Input("StreamName", DefaultString = "EEG_0", IsSingle = true)]
-		public ISpread<string> FResourceName;
+		public IDiffSpread<string> FResourceName;
 		
 		// how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
 		[Input("MaxBufLen", DefaultValue = 1, IsSingle = true)]
@@ -47,6 +47,10 @@ namespace VVVV.Nodes
 		// Should be a multiple of ChunkSize to ensure that the actual number of samples read reamain below.
 		[Input("MaxSamples", DefaultValue = 512, IsSingle = true)]
 		public ISpread<int> FMaxSamples;
+
+        // Manually ask the node to resovle the stream
+        [Input("Find Stream", IsSingle = true, IsBang = true)]
+        public ISpread<bool> FFindStream;
 		
 		// chunk size for each pull, too low may slow down computer, too high... ?
 		[Input("ChunkSize", DefaultValue = 32, IsSingle = true)]
@@ -70,42 +74,45 @@ namespace VVVV.Nodes
 		private liblsl.StreamInfo[] results;
 		private liblsl.StreamInfo info;
 		private liblsl.StreamInlet inlet;
+
+
+        void Connect()
+        {
+            // wait until an EEG stream shows up
+            results = liblsl.resolve_stream("type", FResourceType[0], 1, 1);
+
+            Flogger.Log(LogType.Debug, "Number of streams: " + results.Length);
+
+            for (int i = 0; i < results.Length; i++)
+            {
+                liblsl.StreamInlet tmpInlet = new liblsl.StreamInlet(results[i], FMaxBufLen[0]);
+                liblsl.StreamInfo tmpInfo = tmpInlet.info();
+                Flogger.Log(LogType.Debug, "Look at stream name: " + tmpInfo.name());
+                if (FResourceName[0].Equals(tmpInfo.name()))
+                {
+                    Flogger.Log(LogType.Debug, "Bingo!");
+                    // retrieve data
+                    info = tmpInfo;
+                    inlet = tmpInlet;
+                    FNBChannels[0] = info.channel_count();
+                    FSampleRate[0] = info.nominal_srate();
+                    Flogger.Log(LogType.Debug, "Nb channels: " + info.channel_count());
+                    Flogger.Log(LogType.Debug, "Sample rate: " + info.nominal_srate());
+                    break;
+                }
+            }
+        }
 		
 		//called when data for any output pin is requested
 		public void Evaluate(int SpreadMax)
 		{
-			// establish connexion once for all
-			if (!isInit) {
-				
-				// wait until an EEG stream shows up
-              	results = liblsl.resolve_stream("type",  FResourceType[0], 1, 1);
+            // Try to establish connexion when input stream name changed or if
+            // manually triggered
+            if (FResourceName.IsChanged || FResourceType.IsChanged || FFindStream[0])
+                Connect();
 
-				Flogger.Log(LogType.Debug, "Number of streams: " + results.Length);
-				
-				for (int i = 0; i < results.Length; i++) {
-					liblsl.StreamInlet tmpInlet = new liblsl.StreamInlet(results[i], FMaxBufLen[0]);
-					liblsl.StreamInfo tmpInfo = tmpInlet.info();
-					Flogger.Log(LogType.Debug, "Look at stream name: " + tmpInfo.name());
-					if (FResourceName[0].Equals(tmpInfo.name())) {
-						Flogger.Log(LogType.Debug, "Bingo!");
-						// retrieve data
-						info = tmpInfo;
-						inlet = tmpInlet;
-						FNBChannels[0] = info.channel_count();
-						FSampleRate[0] = info.nominal_srate();
-						Flogger.Log(LogType.Debug,"Nb channels: " + info.channel_count());
-						Flogger.Log(LogType.Debug,"Sample rate: " + info.nominal_srate());
-						break;
-					}
-				}
-				
-				//Flogger.Log(LogType.Debug, inlet.info().as_xml());
-				
-				//string address = "Analog0@localhost";
-				isInit = true;
-			}
-			else if (FNBChannels[0] > 0) {
-				
+            if (FNBChannels[0] > 0)
+            {
 				// First slices: channels
         		FOutput.SliceCount = FNBChannels[0];
 				
