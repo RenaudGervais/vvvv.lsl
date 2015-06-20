@@ -47,14 +47,14 @@ namespace VVVV.Nodes
 		// Should be a multiple of ChunkSize to ensure that the actual number of samples read reamain below.
 		[Input("MaxSamples", DefaultValue = 512, IsSingle = true)]
 		public ISpread<int> FMaxSamples;
-
-        // Manually ask the node to resovle the stream
-        [Input("Find Stream", IsSingle = true, IsBang = true)]
-        public ISpread<bool> FFindStream;
 		
 		// chunk size for each pull, too low may slow down computer, too high... ?
 		[Input("ChunkSize", DefaultValue = 32, IsSingle = true)]
 		public ISpread<int> FChunkSize;
+		
+		// Manually ask the node to resovle the stream
+        [Input("Find Stream", IsSingle = true, IsBang = true)]
+        public ISpread<bool> FFindStream;
 
 		// Spreads (channels) of spreads (chunks)
 		[Output("Output")]
@@ -66,9 +66,6 @@ namespace VVVV.Nodes
 		[Output("SampleRate", IsSingle = true) ]
 		public ISpread<double> FSampleRate;
 		#endregion fields & pins
-		
-		// connexion on first loop
-		private bool isInit = false;
 		
 		// we'll handle only one stream at the moment
 		private liblsl.StreamInfo[] results;
