@@ -27,16 +27,16 @@ namespace VVVV.Nodes
 		ILogger Flogger;
 		
 		#region fields & pins
-		[Input("StreamName", DefaultString = "type", IsSingle = true)]
+		[Input("StreamName", IsSingle = true)]
 		public IDiffSpread<string> FResourceName;
 
-        [Input("StreamType", DefaultString = "name")]
+        [Input("StreamType")]
         public IDiffSpread<string> FResourceType;
         
         //The data pins
         public Spread<IIOContainer<ISpread<double>>> FData = new Spread<IIOContainer<ISpread<double>>>();
 
-        public Spread<IIOContainer<ISpread<int>>> FNbChannel = new Spread<IIOContainer<ISpread<int>>>();
+        public Spread<IIOContainer<IDiffSpread<int>>> FNbChannel = new Spread<IIOContainer<IDiffSpread<int>>>();
 		
 		// how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
 		[Input("Max Buffer Length", DefaultValue = 1, IsSingle = true)]
@@ -72,8 +72,9 @@ namespace VVVV.Nodes
                 countSpread[0],
                 (i) =>
                 {
-                    var ioAttribute = ioAttributeFactory(i + 1);
-                    return FIOFactory.CreateIOContainer<T>(ioAttribute);
+                    var ioAttribute = ioAttributeFactory(i);
+                    var io = FIOFactory.CreateIOContainer<T>(ioAttribute);
+                    return io;
                 }
             );
         }
@@ -82,9 +83,36 @@ namespace VVVV.Nodes
         {
             Spread<int> nbSlice = new Spread<int>(new int[] { FResourceType.SliceCount });
 
-            //Create the pins for data
+            //Create the pins for data and channel count
             HandlePinCountChanged(nbSlice, FData, (i) => new InputAttribute("Data " + FResourceType[i].ToString()));
+            HandlePinCountChanged(
+                nbSlice,
+                FNbChannel,
+                (i) =>
+                {
+                    var ioAttribute = new InputAttribute("Nb Channel " + FResourceType[i].ToString());
+                    ioAttribute.DefaultValue = 1;
+                    return ioAttribute;
+                }
+                );
 
+            //Register nb channel changed event
+            for (int i = 0; i < nbSlice[0]; ++i)
+            {
+                FNbChannel[i].IOObject.Changed += HandleNbChannelChanged;
+            }
+
+            //Create streams with current channel numbers
+            //UpdateStreams();
+        }
+
+        private void HandleNbChannelChanged(IDiffSpread<int> sender)
+        {
+            UpdateStreams();
+        }
+
+        private void UpdateStreams()
+        {             
             //Collect the channel number for each stream
             List<int> nbChannel = new List<int>();
             for (int i = 0; i < FResourceType.SliceCount; ++i)
