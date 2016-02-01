@@ -13,27 +13,28 @@ using LSL;
 
 #endregion usings
 
-// WARNING: 1s timeout for resolving stream, will freeze the program that much if could not find any corresponding stream type.
-
 namespace VVVV.Nodes
 {
 	
 	//ISpread <double>
 	#region PluginInfo
-	[PluginInfo(Name = "LSLReceiveData", Category = "Value", Help = "Lab Streaming Layer receiving protocol", Tags = "lsl, network")]
+	[PluginInfo(Name = "LSLSendData", Category = "Value", Help = "Lab Streaming Layer sending protocol", Tags = "lsl, network")]
 	#endregion PluginInfo
 	
-	public class LSLReceiveDataNode : IPluginEvaluate
+	public class LSLSendDataNode : IPluginEvaluate, IPartImportsSatisfiedNotification
 	{
 		[Import()]
 		ILogger Flogger;
 		
 		#region fields & pins
-		[Input("StreamType", DefaultString = "EEG", IsSingle = true)]
+		[Input("StreamType", DefaultString = "type", IsSingle = true)]
 		public IDiffSpread<string> FResourceType;
-		
-	    [Input("StreamName", DefaultString = "EEG_0", IsSingle = true)]
-		public IDiffSpread<string> FResourceName;
+
+        [Input("StreamName", DefaultString = "name")]
+        public IDiffSpread<string> FResourceName;
+        
+        //The data pins
+        public Spread<IIOContainer<ISpread<double>>> FData = new Spread<IIOContainer<ISpread<double>>>();
 		
 		// how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
 		[Input("MaxBufLen", DefaultValue = 1, IsSingle = true)]
@@ -65,16 +66,50 @@ namespace VVVV.Nodes
 		
 		[Output("SampleRate", IsSingle = true) ]
 		public ISpread<double> FSampleRate;
-		#endregion fields & pins
-		
-		// we'll handle only one stream at the moment
-		private liblsl.StreamInfo[] results;
-		private liblsl.StreamInfo info;
-		private liblsl.StreamInlet inlet;
+
+        [Import]
+        public IIOFactory FIOFactory;
+        #endregion fields & pins
 
 
-        void Connect()
+        #region pin management
+        public void OnImportsSatisfied()
         {
+            //Register input pins event listeners
+            FResourceName.Changed += HandleNbStreamChanged;
+        }
+
+        private void HandlePinCountChanged<T>(ISpread<int> countSpread, Spread<IIOContainer<T>> pinSpread, Func<int, IOAttribute> ioAttributeFactory) where T : class
+        {
+            pinSpread.ResizeAndDispose(
+                countSpread[0],
+                (i) =>
+                {
+                    var ioAttribute = ioAttributeFactory(i + 1);
+                    return FIOFactory.CreateIOContainer<T>(ioAttribute);
+                }
+            );
+        }
+
+        private void HandleNbStreamChanged(IDiffSpread<string> sender)
+        {
+            Spread<int> nbSlice = new Spread<int>(FResourceName.SliceCount);
+
+            //Create the pins for data
+            HandlePinCountChanged(nbSlice, FData, (i) => new InputAttribute("Data " + FResourceName[i]));
+        }
+        #endregion pin management
+
+
+        private liblsl.StreamInfo mInfo;
+		private liblsl.StreamInlet mInlet;
+
+
+        void InitializeStream(string type, string[] name)
+        {
+            //Create the stream info and outlet
+            mInfo = new liblsl.StreamInfo()
+
             // wait until an EEG stream shows up
             results = liblsl.resolve_stream("type", FResourceType[0], 1, 1);
 
