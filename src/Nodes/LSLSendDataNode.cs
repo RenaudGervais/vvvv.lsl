@@ -1,6 +1,7 @@
 #region usings
 using System;
 using System.ComponentModel.Composition;
+using System.Collections.Generic;
 
 using VVVV.PluginInterfaces.V1;
 using VVVV.PluginInterfaces.V2;
@@ -16,7 +17,6 @@ using LSL;
 namespace VVVV.Nodes
 {
 	
-	//ISpread <double>
 	#region PluginInfo
 	[PluginInfo(Name = "LSLSendData", Category = "Value", Help = "Lab Streaming Layer sending protocol", Tags = "lsl, network")]
 	#endregion PluginInfo
@@ -27,48 +27,32 @@ namespace VVVV.Nodes
 		ILogger Flogger;
 		
 		#region fields & pins
-		[Input("StreamType", DefaultString = "type", IsSingle = true)]
-		public IDiffSpread<string> FResourceType;
+		[Input("StreamName", DefaultString = "type", IsSingle = true)]
+		public IDiffSpread<string> FResourceName;
 
-        [Input("StreamName", DefaultString = "name")]
-        public IDiffSpread<string> FResourceName;
+        [Input("StreamType", DefaultString = "name")]
+        public IDiffSpread<string> FResourceType;
         
         //The data pins
         public Spread<IIOContainer<ISpread<double>>> FData = new Spread<IIOContainer<ISpread<double>>>();
+
+        public Spread<IIOContainer<ISpread<int>>> FNbChannel = new Spread<IIOContainer<ISpread<int>>>();
 		
 		// how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
-		[Input("MaxBufLen", DefaultValue = 1, IsSingle = true)]
+		[Input("Max Buffer Length", DefaultValue = 1, IsSingle = true)]
 		public ISpread<int> FMaxBufLen;
-		
-		// leave to 0 to avoid lag, even if signal may get distored
-		[Input("TimeOut", DefaultValue = 0, IsSingle = true)]
-		public ISpread<double> FTimeOut;
-		
-		// will fetch at least that much samples per loop. If too low may miss values, if too high and can't keep up pace with server, may slow down computer
-		// Should be a multiple of ChunkSize to ensure that the actual number of samples read reamain below.
-		[Input("MaxSamples", DefaultValue = 512, IsSingle = true)]
-		public ISpread<int> FMaxSamples;
-		
-		// chunk size for each pull, too low may slow down computer, too high... ?
-		[Input("ChunkSize", DefaultValue = 32, IsSingle = true)]
-		public ISpread<int> FChunkSize;
-		
-		// Manually ask the node to resovle the stream
-        [Input("Find Stream", IsSingle = true, IsBang = true)]
-        public ISpread<bool> FFindStream;
 
-		// Spreads (channels) of spreads (chunks)
-		[Output("Output")]
-		public ISpread<ISpread<double>> FOutput;
-		
-	    [Output("NBChannels", IsSingle = true) ]
-		public ISpread<int> FNBChannels;
-		
-		[Output("SampleRate", IsSingle = true) ]
-		public ISpread<double> FSampleRate;
+        [Output("Status")]
+        public ISpread<string> FStatus;
 
         [Import]
         public IIOFactory FIOFactory;
+
+
+        //Member variables
+        private liblsl.StreamInfo[] mInfo;
+        private liblsl.StreamOutlet[] mOutlet;
+        private string mStatus;
         #endregion fields & pins
 
 
@@ -76,7 +60,10 @@ namespace VVVV.Nodes
         public void OnImportsSatisfied()
         {
             //Register input pins event listeners
-            FResourceName.Changed += HandleNbStreamChanged;
+            FResourceType.Changed += HandleNbStreamChanged;
+
+            //Initialize Data pin count
+            HandleNbStreamChanged(FResourceType);
         }
 
         private void HandlePinCountChanged<T>(ISpread<int> countSpread, Spread<IIOContainer<T>> pinSpread, Func<int, IOAttribute> ioAttributeFactory) where T : class
@@ -93,25 +80,49 @@ namespace VVVV.Nodes
 
         private void HandleNbStreamChanged(IDiffSpread<string> sender)
         {
-            Spread<int> nbSlice = new Spread<int>(new int[] { FResourceName.SliceCount });
+            Spread<int> nbSlice = new Spread<int>(new int[] { FResourceType.SliceCount });
 
             //Create the pins for data
-            HandlePinCountChanged(nbSlice, FData, (i) => new InputAttribute("Data " + FResourceName[i].ToString()));
+            HandlePinCountChanged(nbSlice, FData, (i) => new InputAttribute("Data " + FResourceType[i].ToString()));
+
+            //Collect the channel number for each stream
+            List<int> nbChannel = new List<int>();
+            for (int i = 0; i < FResourceType.SliceCount; ++i)
+                nbChannel.Add(FNbChannel[i].IOObject[0]);
+
+            //Reinitialize the stream
+            string[] names = new string[FResourceType.SliceCount];
+            for (int i = 0; i < FResourceType.SliceCount; ++i)
+                names[i] = FResourceType[i];
+            InitializeStreams(FResourceName[0], names, nbChannel.ToArray());
         }
         #endregion pin management
 
 
-        private liblsl.StreamInfo mInfo;
-		private liblsl.StreamInlet mInlet;
-
-
-        void InitializeStream(string type, string[] name)
+        void InitializeStreams(string name, string[] type, int[] nbChannel)
         {
+            if (type.Length == nbChannel.Length)
+            {
+                int nbStream = type.Length;
+                mInfo = new liblsl.StreamInfo[nbStream];
+                mOutlet = new liblsl.StreamOutlet[nbStream];
+                for (int i = 0; i < nbStream; ++i)
+                {
+                    mInfo[i] = new liblsl.StreamInfo(name, type[i], nbChannel[i]);
+                    mOutlet[i] = new liblsl.StreamOutlet(mInfo[i]);
+                }
+
+                mStatus = "OK";
+            }
+            else
+                mStatus = "Channel numbers for each stream is not specified correctly";
         }
 		
 		//called when data for any output pin is requested
 		public void Evaluate(int SpreadMax)
 		{
+            FStatus.SliceCount = 1;
+            FStatus[0] = mStatus;
 		}
 	}
 }
