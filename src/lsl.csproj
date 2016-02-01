@@ -44,6 +44,9 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x86'">
     <OutputPath>..\bin\</OutputPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <OutputPath>..\bin\</OutputPath>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="LSL">
       <HintPath>extern\$(PlatformTarget)\liblsl.dll</HintPath>
@@ -69,6 +72,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Nodes\LSLReceiveDataNode.cs" />
+    <Compile Include="Nodes\LSLSendDataNode.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Properties\LSL.cs" />
   </ItemGroup>
