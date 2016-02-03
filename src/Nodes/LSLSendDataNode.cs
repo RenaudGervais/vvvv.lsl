@@ -25,22 +25,27 @@ namespace VVVV.Nodes
 	{
 		[Import()]
 		ILogger Flogger;
-		
-		#region fields & pins
-		[Input("StreamName", IsSingle = true)]
+
+        #region fields & pins
+        // how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
+        [Input("Max Buffer Length", DefaultValue = 1, IsSingle = true)]
+        public ISpread<int> FMaxBufLen;
+
+        [Input("StreamName", IsSingle = true)]
 		public IDiffSpread<string> FResourceName;
 
-        [Input("StreamType")]
-        public IDiffSpread<string> FResourceType;
-        
-        //The data pins
+        //A spread of Stream types
+        public Spread<IIOContainer<ISpread<string>>> FResourceType = new Spread<IIOContainer<ISpread<string>>>();
+        //public IDiffSpread<string> FResourceType;
+
+        //A spread of data
         public Spread<IIOContainer<ISpread<double>>> FData = new Spread<IIOContainer<ISpread<double>>>();
 
-        public Spread<IIOContainer<IDiffSpread<int>>> FNbChannel = new Spread<IIOContainer<IDiffSpread<int>>>();
-		
-		// how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
-		[Input("Max Buffer Length", DefaultValue = 1, IsSingle = true)]
-		public ISpread<int> FMaxBufLen;
+        //A spread of channel number associated with each stream type
+        public Spread<IIOContainer<IDiffSpread<int>>> FNbChannels = new Spread<IIOContainer<IDiffSpread<int>>>();
+
+        [Config("Stream type count", DefaultValue = 1, MinValue = 0)]
+        public IDiffSpread<int> FResourceTypeCount;
 
         [Output("Status")]
         public ISpread<string> FStatus;
@@ -60,10 +65,7 @@ namespace VVVV.Nodes
         public void OnImportsSatisfied()
         {
             //Register input pins event listeners
-            FResourceType.Changed += HandleNbStreamChanged;
-
-            //Initialize Data pin count
-            HandleNbStreamChanged(FResourceType);
+            FResourceTypeCount.Changed += HandleNbStreamChanged;
         }
 
         private void HandlePinCountChanged<T>(ISpread<int> countSpread, Spread<IIOContainer<T>> pinSpread, Func<int, IOAttribute> ioAttributeFactory) where T : class
@@ -79,30 +81,50 @@ namespace VVVV.Nodes
             );
         }
 
-        private void HandleNbStreamChanged(IDiffSpread<string> sender)
+        private void HandleNbStreamChanged(IDiffSpread<int> sender)
         {
-            Spread<int> nbSlice = new Spread<int>(new int[] { FResourceType.SliceCount });
-
             //Create the pins for data and channel count
-            HandlePinCountChanged(nbSlice, FData, (i) => new InputAttribute("Data " + FResourceType[i].ToString()));
             HandlePinCountChanged(
-                nbSlice,
-                FNbChannel,
+                sender,
+                FResourceType,
                 (i) =>
                 {
-                    var ioAttribute = new InputAttribute("Nb Channel " + FResourceType[i].ToString());
+                    var ioAttribute = new InputAttribute(string.Format("Stream type {0}", i));
+                    ioAttribute.IsSingle = true;
+                    ioAttribute.DefaultString = ioAttribute.Name;
+                    return ioAttribute;
+                }
+                );
+            HandlePinCountChanged(
+                sender,
+                FNbChannels,
+                (i) =>
+                {
+                    var ioAttribute = new InputAttribute(string.Format("Nb Channel {0}", i));
                     ioAttribute.DefaultValue = 1;
+                    ioAttribute.MinValue = 1;
+                    ioAttribute.IsSingle = true;
+                    return ioAttribute;
+                }
+                );
+            HandlePinCountChanged(
+                sender,
+                FData,
+                (i) =>
+                {
+                    var ioAttribute = new InputAttribute(string.Format("Data {0}", i));
+                    ioAttribute.DefaultValue = 0;
                     return ioAttribute;
                 }
                 );
 
             //Register nb channel changed event
-            for (int i = 0; i < nbSlice[0]; ++i)
+            for (int i = 0; i < FNbChannels.SliceCount; ++i)
             {
-                FNbChannel[i].IOObject.Changed += HandleNbChannelChanged;
+                FNbChannels[i].IOObject.Changed += HandleNbChannelChanged;
             }
 
-            //Create streams with current channel numbers
+            ////Create streams with current channel numbers
             //UpdateStreams();
         }
 
@@ -112,17 +134,22 @@ namespace VVVV.Nodes
         }
 
         private void UpdateStreams()
-        {             
-            //Collect the channel number for each stream
-            List<int> nbChannel = new List<int>();
-            for (int i = 0; i < FResourceType.SliceCount; ++i)
-                nbChannel.Add(FNbChannel[i].IOObject[0]);
+        {
+            //Collect the channel count for each stream
+            int[] nbChannel = new int[FNbChannels.SliceCount];
+            for (int i = 0; i < FNbChannels.SliceCount; ++i)
+                nbChannel[i] = (FNbChannels[i].IOObject[0]);
 
-            //Reinitialize the stream
+            //Collect the stream type names
             string[] names = new string[FResourceType.SliceCount];
             for (int i = 0; i < FResourceType.SliceCount; ++i)
-                names[i] = FResourceType[i];
-            InitializeStreams(FResourceName[0], names, nbChannel.ToArray());
+                names[i] = FResourceType[i].IOObject[0];
+
+            //Make sure no stream type or stream name is empty
+
+
+            //Initialize the streams
+            InitializeStreams(FResourceName[0], names, nbChannel);
         }
         #endregion pin management
 
