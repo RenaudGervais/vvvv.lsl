@@ -142,11 +142,19 @@ namespace VVVV.Nodes
 
             //Collect the stream type names
             string[] names = new string[FResourceType.SliceCount];
+            bool emptyNames = false;
             for (int i = 0; i < FResourceType.SliceCount; ++i)
+            {
                 names[i] = FResourceType[i].IOObject[0];
+                emptyNames = emptyNames || string.IsNullOrEmpty(names[i]);
+            }
 
-            //Make sure no stream type or stream name is empty
-
+            //Make sure no stream type or stream name is empty before initialization
+            if (string.IsNullOrEmpty(FResourceName[0]) || emptyNames)
+            {
+                mStatus = "Stream names cannot be empty";
+                return;
+            }
 
             //Initialize the streams
             InitializeStreams(FResourceName[0], names, nbChannel);
