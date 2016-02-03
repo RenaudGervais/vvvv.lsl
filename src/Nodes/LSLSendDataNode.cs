@@ -66,6 +66,7 @@ namespace VVVV.Nodes
         {
             //Register input pins event listeners
             FResourceTypeCount.Changed += HandleNbStreamChanged;
+            FResourceName.Changed += HandleStreamNameChanged;
         }
 
         private void HandlePinCountChanged<T>(ISpread<int> countSpread, Spread<IIOContainer<T>> pinSpread, Func<int, IOAttribute> ioAttributeFactory) where T : class
@@ -129,6 +130,11 @@ namespace VVVV.Nodes
         }
 
         private void HandleNbChannelChanged(IDiffSpread<int> sender)
+        {
+            UpdateStreams();
+        }
+
+        private void HandleStreamNameChanged(IDiffSpread<string> sender)
         {
             UpdateStreams();
         }
