@@ -38,9 +38,8 @@ namespace VVVV.Nodes
         [Input("Stream Type", DefaultString = "stream", IsSingle = true, CheckIfChanged = true)]
 		public IDiffSpread<string> FResourceType;
 
-        //A spread of Stream types
+        //A spread of Stream names
         public Spread<IIOContainer<ISpread<string>>> FResourceName = new Spread<IIOContainer<ISpread<string>>>();
-        //public IDiffSpread<string> FResourceType;
 
         //A spread of data
         public Spread<IIOContainer<ISpread<double>>> FData = new Spread<IIOContainer<ISpread<double>>>();
@@ -48,8 +47,8 @@ namespace VVVV.Nodes
         //A spread of channel number associated with each stream type
         public Spread<IIOContainer<IDiffSpread<int>>> FNbChannels = new Spread<IIOContainer<IDiffSpread<int>>>();
 
-        [Config("Stream type count", DefaultValue = 1, MinValue = 0)]
-        public IDiffSpread<int> FResourceTypeCount;
+        [Config("Stream name count", DefaultValue = 1, MinValue = 0)]
+        public IDiffSpread<int> FResourceNameCount;
 
         [Output("Status")]
         public ISpread<string> FStatus;
@@ -69,8 +68,8 @@ namespace VVVV.Nodes
         public void OnImportsSatisfied()
         {
             //Register input pins event listeners
-            FResourceTypeCount.Changed += HandleNbStreamChanged;
-            FResourceType.Changed += HandleStreamNameChanged;
+            FResourceNameCount.Changed += HandleNbStreamChanged;
+            FResourceType.Changed += HandleStreamTypeChanged;
         }
 
         private void HandlePinCountChanged<T>(ISpread<int> countSpread, Spread<IIOContainer<T>> pinSpread, Func<int, IOAttribute> ioAttributeFactory) where T : class
@@ -130,9 +129,6 @@ namespace VVVV.Nodes
             {
                 FNbChannels[i].IOObject.Changed += HandleNbChannelChanged;
             }
-
-            //Create streams with current channel numbers
-            //UpdateStreams();
         }
 
         private void HandleNbChannelChanged(IDiffSpread<int> sender)
@@ -140,7 +136,7 @@ namespace VVVV.Nodes
             UpdateStreams();
         }
 
-        private void HandleStreamNameChanged(IDiffSpread<string> sender)
+        private void HandleStreamTypeChanged(IDiffSpread<string> sender)
         {
             UpdateStreams();
         }
@@ -148,7 +144,7 @@ namespace VVVV.Nodes
         private void UpdateStreams()
         {
             //Collect the channel count for each stream
-            int[] nbChannel = new int[FResourceTypeCount[0]];
+            int[] nbChannel = new int[FResourceNameCount[0]];
             for (int i = 0; i < nbChannel.Length; ++i)
             {
                 if (FNbChannels[i].IOObject.SliceCount == 0) return;
@@ -156,13 +152,12 @@ namespace VVVV.Nodes
                 nbChannel[i] = FNbChannels[i].IOObject[0];
             }
 
-            //Collect the stream type names
-            string[] names = new string[FResourceName.SliceCount];
+            //Collect the stream names
+            string[] names = new string[FResourceNameCount[0]];
             bool emptyNames = false;
-            for (int i = 0; i < FResourceName.SliceCount; ++i)
+            for (int i = 0; i < names.Length; ++i)
             {
-                var types = FResourceName[i].IOObject;
-                names[i] = types[0];
+                names[i] = FResourceName[i].IOObject[0];
                 emptyNames = emptyNames || string.IsNullOrEmpty(names[i]);
             }
 
@@ -179,16 +174,16 @@ namespace VVVV.Nodes
         #endregion pin management
 
 
-        void InitializeStreams(string name, string[] type, int[] nbChannel)
+        void InitializeStreams(string type, string[] name, int[] nbChannel)
         {
-            if (type.Length == nbChannel.Length)
+            if (name.Length == nbChannel.Length)
             {
-                int nbStream = type.Length;
+                int nbStream = name.Length;
                 mInfo = new liblsl.StreamInfo[nbStream];
                 mOutlet = new liblsl.StreamOutlet[nbStream];
                 for (int i = 0; i < nbStream; ++i)
                 {
-                    mInfo[i] = new liblsl.StreamInfo(name, type[i], nbChannel[i], 100, liblsl.channel_format_t.cf_float32);
+                    mInfo[i] = new liblsl.StreamInfo(name[i], type, nbChannel[i]);
                     mOutlet[i] = new liblsl.StreamOutlet(mInfo[i]);
                 }
 
@@ -203,9 +198,8 @@ namespace VVVV.Nodes
 		{
             if(FSend[0])
             {
-                for( int pin = 0; pin < FResourceTypeCount[0]; ++pin)
+                for( int pin = 0; pin < FResourceNameCount[0]; ++pin)
                 {
-                    //var dataSpread = FNbChannels[pin].IOObject;
                     double[] data = new double[FNbChannels[pin].IOObject[0]];
                     for (int j = 0; j < data.Length; ++j)
                         data[j] = FData[pin].IOObject[j];
