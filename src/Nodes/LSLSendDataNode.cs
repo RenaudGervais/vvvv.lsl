@@ -23,9 +23,6 @@ namespace VVVV.Nodes
 	
 	public class LSLSendDataNode : IPluginEvaluate, IPartImportsSatisfiedNotification
 	{
-		[Import()]
-		ILogger Flogger;
-
         #region fields & pins
         //Sending data switch
         [Input("Send", IsToggle = true, IsSingle = true, DefaultBoolean = false)]
