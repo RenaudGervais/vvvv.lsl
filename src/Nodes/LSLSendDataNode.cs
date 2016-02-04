@@ -36,7 +36,7 @@ namespace VVVV.Nodes
 		public IDiffSpread<string> FResourceType;
 
         //A spread of Stream names
-        public Spread<IIOContainer<ISpread<string>>> FResourceName = new Spread<IIOContainer<ISpread<string>>>();
+        public Spread<IIOContainer<IDiffSpread<string>>> FResourceName = new Spread<IIOContainer<IDiffSpread<string>>>();
 
         //A spread of data
         public Spread<IIOContainer<ISpread<double>>> FData = new Spread<IIOContainer<ISpread<double>>>();
@@ -55,8 +55,8 @@ namespace VVVV.Nodes
 
 
         //Member variables
-        private liblsl.StreamInfo[] mInfo;
-        private liblsl.StreamOutlet[] mOutlet;
+        private liblsl.StreamInfo[] mInfo = new liblsl.StreamInfo[] { };
+        private liblsl.StreamOutlet[] mOutlet = new liblsl.StreamOutlet[] { };
         private string mStatus;
         #endregion fields & pins
 
@@ -93,6 +93,7 @@ namespace VVVV.Nodes
                     var ioAttribute = new InputAttribute(string.Format("Stream Name {0}", i));
                     ioAttribute.IsSingle = true;
                     ioAttribute.DefaultString = ioAttribute.Name;
+                    ioAttribute.CheckIfChanged = true;
                     return ioAttribute;
                 }
                 );
@@ -120,12 +121,19 @@ namespace VVVV.Nodes
                 }
                 );
 
-            //Register nb channel changed event
+            //Register events on newly created pins
+            FResourceName.Sync();
             FNbChannels.Sync();
-            for (int i = 0; i < FNbChannels.SliceCount; ++i)
+            for (int i = 0; i < FResourceNameCount[0]; ++i)
             {
+                FResourceName[i].IOObject.Changed += StreamName_Changed;
                 FNbChannels[i].IOObject.Changed += HandleNbChannelChanged;
             }
+        }
+
+        private void StreamName_Changed(IDiffSpread<string> spread)
+        {
+            UpdateStreams();
         }
 
         private void HandleNbChannelChanged(IDiffSpread<int> sender)

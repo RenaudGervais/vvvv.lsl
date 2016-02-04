@@ -1,6 +1,7 @@
 #region usings
 using System;
 using System.ComponentModel.Composition;
+using System.Collections.Generic;
 
 using VVVV.PluginInterfaces.V1;
 using VVVV.PluginInterfaces.V2;
@@ -20,23 +21,25 @@ namespace VVVV.Nodes
 	
 	//ISpread <double>
 	#region PluginInfo
-	[PluginInfo(Name = "LSLReceiveData", Category = "Value", Help = "Lab Streaming Layer receiving protocol", Tags = "lsl, network")]
+	[PluginInfo(Name = "LSLReceiveData", AutoEvaluate = true, Category = "Value", Help = "Lab Streaming Layer receiving protocol", Tags = "lsl, network")]
 	#endregion PluginInfo
 	
-	public class LSLReceiveDataNode : IPluginEvaluate
-	{
+	public class LSLReceiveDataNode : IPluginEvaluate, IPartImportsSatisfiedNotification
+    {
 		[Import()]
 		ILogger Flogger;
-		
-		#region fields & pins
-		[Input("StreamType", DefaultString = "EEG", IsSingle = true)]
-		public IDiffSpread<string> FResourceType;
-		
-	    [Input("StreamName", DefaultString = "EEG_0", IsSingle = true)]
-		public IDiffSpread<string> FResourceName;
-		
-		// how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
-		[Input("MaxBufLen", DefaultValue = 1, IsSingle = true)]
+
+        #region fields & pins
+        // Enable
+        [Input("Enabled", IsSingle = true, IsToggle = true)]
+        public IDiffSpread<bool> FEnabled;
+
+        // Manually ask for updating the streams
+        [Input("Update Streams", IsSingle = true, IsBang = true)]
+        public ISpread<bool> FUpdate;
+
+        // how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
+        [Input("MaxBufLen", DefaultValue = 1, IsSingle = true)]
 		public ISpread<int> FMaxBufLen;
 		
 		// leave to 0 to avoid lag, even if signal may get distored
@@ -51,103 +54,206 @@ namespace VVVV.Nodes
 		// chunk size for each pull, too low may slow down computer, too high... ?
 		[Input("ChunkSize", DefaultValue = 32, IsSingle = true)]
 		public ISpread<int> FChunkSize;
-		
-		// Manually ask the node to resovle the stream
-        [Input("Find Stream", IsSingle = true, IsBang = true)]
-        public ISpread<bool> FFindStream;
 
-		// Spreads (channels) of spreads (chunks)
-		[Output("Output")]
-		public ISpread<ISpread<double>> FOutput;
-		
-	    [Output("NBChannels", IsSingle = true) ]
-		public ISpread<int> FNBChannels;
-		
-		[Output("SampleRate", IsSingle = true) ]
-		public ISpread<double> FSampleRate;
+        // Stream type
+        [Input("StreamType", DefaultString = "type", IsSingle = true)]
+        public IDiffSpread<string> FResourceType;
+
+        //A spread of Stream names
+        public Spread<IIOContainer<IDiffSpread<string>>> FResourceName = new Spread<IIOContainer<IDiffSpread<string>>>();
+
+        //A config to specify the number of stream required.
+        //@note: ideally, we would only take a spread of Stream Names as input and based on the number of slices, create the according number of output pins but
+        //       I'm struggling to have a consistent behavior.
+        [Config("Stream name count", DefaultValue = 1, MinValue = 0)]
+        public IDiffSpread<int> FResourceNameCount;
+
+        // Spreads of data (where bin size is the number of channels)
+        public Spread<IIOContainer<ISpread<ISpread<double>>>> FData = new Spread<IIOContainer<ISpread<ISpread<double>>>>();
+
+        //Sample rates
+        public Spread<IIOContainer<ISpread<double>>> FSampleRate = new Spread<IIOContainer<ISpread<double>>>();
+
+        [Import]
+        public IIOFactory FIOFactory;
 		#endregion fields & pins
 		
-		// we'll handle only one stream at the moment
-		private liblsl.StreamInfo[] results;
-		private liblsl.StreamInfo info;
-		private liblsl.StreamInlet inlet;
+        // The private stream informations
+		private liblsl.StreamInfo[] mInfo;
+		private liblsl.StreamInlet[] mInlet;
+        private int[] mNbChannel;
+        private double[] mSampleRate;
 
+        public void OnImportsSatisfied()
+        {
+            //Register listeners
+            FEnabled.Changed += FEnabled_Changed;
+            FResourceType.Changed += FResourceType_Changed;
+            FResourceNameCount.Changed += FResourceNameCount_Changed;
+        }
+
+        private void FEnabled_Changed(IDiffSpread<bool> spread)
+        {
+            if (spread[0])
+                Connect();
+        }
+
+        private void FResourceNameCount_Changed(IDiffSpread<int> spread)
+        {
+            //Update the stream names input pins
+            HandlePinCountChanged(
+                spread,
+                FResourceName,
+                (i) =>
+                {
+                    var io = new InputAttribute(string.Format("Stream name {0}", i));
+                    io.IsSingle = true;
+                    return io;
+                }
+                );
+
+            //Update the output pins
+            HandlePinCountChanged(
+                spread,
+                FData,
+                (i) =>
+                {
+                    var io = new OutputAttribute(string.Format("Data stream {0}", i));
+                    return io;
+                }
+                );
+
+            HandlePinCountChanged(
+                spread,
+                FSampleRate,
+                (i) =>
+                {
+                    var io = new OutputAttribute(string.Format("Sample rate {0}", i));
+                    return io;
+                }
+                );
+
+            //Register events on newly created pins
+            for (int i = 0; i < FResourceNameCount[0]; ++i)
+            {
+                FResourceName[i].IOObject.Changed += StreamName_Changed;
+            }
+        }
+
+        private void StreamName_Changed(IDiffSpread<string> spread)
+        {
+            //If enabled, recreate connections right away
+            if (FEnabled[0])
+                Connect();
+        }
+
+        private void FResourceType_Changed(IDiffSpread<string> spread)
+        {
+            //If enabled, recreate connections right away
+            if (FEnabled[0])
+                Connect();
+        }
+
+        private void HandlePinCountChanged<T>(ISpread<int> countSpread, Spread<IIOContainer<T>> pinSpread, Func<int, IOAttribute> ioAttributeFactory) where T : class
+        {
+            pinSpread.ResizeAndDispose(
+                countSpread[0],
+                (i) =>
+                {
+                    var ioAttribute = ioAttributeFactory(i);
+                    var io = FIOFactory.CreateIOContainer<T>(ioAttribute);
+                    return io;
+                }
+            );
+        }
 
         void Connect()
         {
-            // wait until an EEG stream shows up
-            results = liblsl.resolve_stream("type", FResourceType[0], 1, 1);
+            //Find all the streams of the specified type
+            liblsl.StreamInfo[] streamInfo;
+            streamInfo = liblsl.resolve_stream("type", FResourceType[0], 1, FTimeOut[0]);
 
-            Flogger.Log(LogType.Debug, "Number of streams: " + results.Length);
-
-            for (int i = 0; i < results.Length; i++)
+            mInfo = new liblsl.StreamInfo[FResourceNameCount[0]];
+            mInlet = new liblsl.StreamInlet[FResourceNameCount[0]];
+            mNbChannel = new int[FResourceNameCount[0]];
+            mSampleRate = new double[FResourceNameCount[0]];
+            
+            //For each stream name, search for it in the found streams
+            for (int i = 0; i < FResourceNameCount[0]; ++i)
             {
-                liblsl.StreamInlet tmpInlet = new liblsl.StreamInlet(results[i], FMaxBufLen[0]);
-                liblsl.StreamInfo tmpInfo = tmpInlet.info();
-                Flogger.Log(LogType.Debug, "Look at stream name: " + tmpInfo.name());
-                if (FResourceName[0].Equals(tmpInfo.name()))
+                foreach (liblsl.StreamInfo info in streamInfo)
                 {
-                    Flogger.Log(LogType.Debug, "Bingo!");
-                    // retrieve data
-                    info = tmpInfo;
-                    inlet = tmpInlet;
-                    FNBChannels[0] = info.channel_count();
-                    FSampleRate[0] = info.nominal_srate();
-                    Flogger.Log(LogType.Debug, "Nb channels: " + info.channel_count());
-                    Flogger.Log(LogType.Debug, "Sample rate: " + info.nominal_srate());
-                    break;
+                    if (info.name().Equals(FResourceName[i].IOObject[0]))
+                    {
+                        //Safe info of found stream
+                        mInfo[i] = info;
+
+                        //Create stream inlet
+                        mInlet[i] = new liblsl.StreamInlet(info, FMaxBufLen[0]);
+
+                        //Get info from the stream
+                        mNbChannel[i] = info.channel_count();
+                        mSampleRate[i] = info.nominal_srate();
+
+                        ////Found, so skip to next stream
+                        //break;
+                    }
                 }
             }
         }
-		
-		//called when data for any output pin is requested
-		public void Evaluate(int SpreadMax)
+
+        //called when data for any output pin is requested
+        public void Evaluate(int SpreadMax)
 		{
-            // Try to establish connexion when input stream name changed or if
-            // manually triggered
-            if (FResourceName.IsChanged || FResourceType.IsChanged || FFindStream[0])
+            //Check if manual synchronization of streams is requested
+            if (FUpdate[0])
                 Connect();
 
-            if (FNBChannels[0] > 0)
+            //Retrieve the data from each stream
+            if (FEnabled[0])
             {
-				// First slices: channels
-        		FOutput.SliceCount = FNBChannels[0];
-				
-				// VPRN tells us how many values we have and we know the size of a chunk: easy to compute how many channels we receive
-       			//FNBChannels[0] = 1;// e.Channels.Length / FChunkSize[0];
-        	
-				// pull all we can
-				int totalChunks = 0;
-				float[,] sample = new float[FChunkSize[0],FNBChannels[0]];
-				double[] timestamps = new double[FChunkSize[0]];
-				int nbChunks = -1;
-				//Flogger.Log(LogType.Debug,"new loop ");
-				while(nbChunks != 0 && totalChunks < FMaxSamples[0] ) {
-					nbChunks = inlet.pull_chunk( sample, timestamps, FTimeOut[0]);
-					//Flogger.Log(LogType.Debug,"timestamp: " + nbChunks);
-					totalChunks += nbChunks;
-					
-					// try to fill
-					for (int chan = 0; chan < FNBChannels[0]; chan++) {
-						// Within slices we have chunks
-						FOutput[chan].SliceCount = totalChunks;
-						for (int i = 0; i < nbChunks; i++) {
-							// fill from the end
-							FOutput[chan][totalChunks-nbChunks+i] = sample[i,chan];
-						}
-					}	
-				}
-				
-            	//for (int chan = 0; chan < FNBChannels[0]; chan++) {
-            	//	// Within slices we have chunks
-				//	FOutput[chan].SliceCount = FChunkSize;
-            	//	for (int i = 0; i < FChunkSize; i++) {
-            	//		// We move to the correct position
-            	//		int pos = chan * FChunkSize + i;
-            	//		FOutput[chan][i] = 1;//e.Channels[pos];
-            	//	}
-		   		//}
-			}
-		}
-	}
+                for (int pin = 0; pin < FResourceNameCount[0]; ++pin)
+                {
+                    //Only pull valid streams
+                    if (mInlet[pin] != null)
+                    {
+                        //Pull everything we can
+                        int totalChunks = 0;
+                        double[,] sample = new double[FChunkSize[0], mNbChannel[pin]];
+                        double[] timestamps = new double[FChunkSize[0]];
+                        int nbChunks = -1;
+                        List<List<double>> data = new List<List<double>>();
+                        while (nbChunks != 0 && totalChunks < FMaxSamples[0])
+                        {
+                            //Pull the chunks
+                            nbChunks = mInlet[pin].pull_chunk(sample, timestamps, FTimeOut[0]);
+                            totalChunks += nbChunks;
+
+                            //Queue the chunks
+                            for (int i = 0; i < nbChunks; ++i)
+                            {
+                                List<double> singleSample = new List<double>();
+                                for (int j = 0; j < mNbChannel[pin]; ++j)
+                                {
+                                    singleSample.Add(sample[i, j]);
+                                }
+                                data.Add(singleSample);
+                            }
+
+                            //Reverse order so that the most recent samples are first in the list
+                            data.Reverse();
+                        }
+
+                        //Output on the pins
+                        FData[pin].IOObject.SliceCount = data.Count;
+                        for (int i = 0; i < data.Count; ++i)
+                        {
+                            FData[pin].IOObject[i].SliceCount = data[i].Count;
+                            FData[pin].IOObject[i].AssignFrom(data[i]);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
