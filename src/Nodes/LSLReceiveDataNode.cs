@@ -239,10 +239,10 @@ namespace VVVV.Nodes
                                 }
                                 data.Add(singleSample);
                             }
-
-                            //Reverse order so that the most recent samples are first in the list
-                            data.Reverse();
                         }
+
+                        //Reverse order so that the most recent samples are first in the list
+                        data.Reverse();
 
                         //Output on the pins
                         FData[pin].IOObject.SliceCount = data.Count;
@@ -252,9 +252,8 @@ namespace VVVV.Nodes
                             FData[pin].IOObject[i].AssignFrom(data[i]);
                         }
 
-                        FSampleRate[pin].IOObject.SliceCount = mSampleRate.Length;
-                        for (int i = 0; i < mSampleRate.Length; ++i)
-                            FSampleRate[pin].IOObject[i] = mSampleRate[i];
+                        FSampleRate[pin].IOObject.SliceCount = 1;
+                        FSampleRate[pin].IOObject[0] = mSampleRate[pin];
                     }
                 }
             }
