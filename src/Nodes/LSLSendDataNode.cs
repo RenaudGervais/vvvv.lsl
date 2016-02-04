@@ -93,6 +93,7 @@ namespace VVVV.Nodes
                     var ioAttribute = new InputAttribute(string.Format("Stream Name {0}", i));
                     ioAttribute.IsSingle = true;
                     ioAttribute.DefaultString = ioAttribute.Name;
+                    ioAttribute.CheckIfChanged = true;
                     return ioAttribute;
                 }
                 );
