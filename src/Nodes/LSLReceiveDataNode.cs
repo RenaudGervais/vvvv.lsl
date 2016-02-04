@@ -30,9 +30,13 @@ namespace VVVV.Nodes
 		ILogger Flogger;
 
         #region fields & pins
-        // Manually ask the node to resovle the stream
+        // Enable
         [Input("Enabled", IsSingle = true, IsToggle = true)]
         public IDiffSpread<bool> FEnabled;
+
+        // Manually ask for updating the streams
+        [Input("Update Streams", IsSingle = true, IsBang = true)]
+        public ISpread<bool> FUpdate;
 
         // how many seconds should be buffered by LSL; low value to ensure real-time, high to limit data loss. At least 1 second.
         [Input("MaxBufLen", DefaultValue = 1, IsSingle = true)]
@@ -82,7 +86,6 @@ namespace VVVV.Nodes
 		private liblsl.StreamInlet[] mInlet;
         private int[] mNbChannel;
         private double[] mSampleRate;
-
 
         public void OnImportsSatisfied()
         {
@@ -229,51 +232,106 @@ namespace VVVV.Nodes
         //called when data for any output pin is requested
         public void Evaluate(int SpreadMax)
 		{
-    //        // Try to establish connexion when input stream name changed or if
-    //        // manually triggered
-    //        if (FEnabled[0])
-    //            Connect();
+            //Check if manual synchronization of streams is requested
+            if (FUpdate[0])
+                Connect();
 
-    //        if (FNBChannels[0] > 0)
-    //        {
-				//// First slices: channels
-    //    		FData.SliceCount = FNBChannels[0];
-				
-				//// VPRN tells us how many values we have and we know the size of a chunk: easy to compute how many channels we receive
-    //   			//FNBChannels[0] = 1;// e.Channels.Length / FChunkSize[0];
-        	
-				//// pull all we can
-				//int totalChunks = 0;
-				//float[,] sample = new float[FChunkSize[0],FNBChannels[0]];
-				//double[] timestamps = new double[FChunkSize[0]];
-				//int nbChunks = -1;
-				////Flogger.Log(LogType.Debug,"new loop ");
-				//while(nbChunks != 0 && totalChunks < FMaxSamples[0] ) {
-				//	nbChunks = inlet.pull_chunk( sample, timestamps, FTimeOut[0]);
-				//	//Flogger.Log(LogType.Debug,"timestamp: " + nbChunks);
-				//	totalChunks += nbChunks;
-					
-				//	// try to fill
-				//	for (int chan = 0; chan < FNBChannels[0]; chan++) {
-				//		// Within slices we have chunks
-				//		FData[chan].SliceCount = totalChunks;
-				//		for (int i = 0; i < nbChunks; i++) {
-				//			// fill from the end
-				//			FData[chan][totalChunks-nbChunks+i] = sample[i,chan];
-				//		}
-				//	}	
-				//}
-				
-            	//for (int chan = 0; chan < FNBChannels[0]; chan++) {
-            	//	// Within slices we have chunks
-				//	FOutput[chan].SliceCount = FChunkSize;
-            	//	for (int i = 0; i < FChunkSize; i++) {
-            	//		// We move to the correct position
-            	//		int pos = chan * FChunkSize + i;
-            	//		FOutput[chan][i] = 1;//e.Channels[pos];
-            	//	}
-		   		//}
-			//}
-		}
+            //Retrieve the data from each stream
+            for(int pin = 0; pin < FResourceNameCount[0]; ++pin)
+            {
+                //Only pull valid streams
+                if (mInlet[pin] != null)
+                {
+                    //Pull everything we can
+                    int totalChunks = 0;
+                    double[,] sample = new double[FChunkSize[0], mNbChannel[pin]];
+                    double[] timestamps = new double[FChunkSize[0]];
+                    int nbChunks = -1;
+                    List<List<double>> data = new List<List<double>>();
+                    while (nbChunks != 0 && totalChunks < FMaxSamples[0])
+                    {
+                        //Pull the chunks
+                        nbChunks = mInlet[pin].pull_chunk(sample, timestamps, FTimeOut[0]);
+                        totalChunks += nbChunks;
+
+                        //Queue the chunks
+                        for (int i = 0; i < nbChunks; ++i)
+                        {
+                            List<double> singleSample = new List<double>();
+                            for(int j = 0; j < mNbChannel[pin]; ++j)
+                            {
+                                singleSample.Add(sample[i, j]);
+                            }
+                            data.Add(singleSample);
+                        }
+
+                        //Reverse order so that the most recent samples are first in the list
+                        data.Reverse();
+                    }
+
+                    //Output on the pins
+                    FData[pin].IOObject.SliceCount = data.Count;
+                    for(int i = 0; i < data.Count; ++i)
+                    {
+                        FData[pin].IOObject[i].SliceCount = data[i].Count;
+                        FData[pin].IOObject[i].AssignFrom(data[i]);
+                    }
+                }
+            }
+
+
+
+
+            //// Try to establish connexion when input stream name changed or if
+            //// manually triggered
+            //if (FEnabled[0])
+            //    Connect();
+
+            //if (FNBChannels[0] > 0)
+            //{
+            //    // First slices: channels
+            //    FData.SliceCount = FNBChannels[0];
+
+            //    // VPRN tells us how many values we have and we know the size of a chunk: easy to compute how many channels we receive
+            //    //FNBChannels[0] = 1;// e.Channels.Length / FChunkSize[0];
+
+            //    // pull all we can
+            //    int totalChunks = 0;
+            //    float[,] sample = new float[FChunkSize[0], FNBChannels[0]];
+            //    double[] timestamps = new double[FChunkSize[0]];
+            //    int nbChunks = -1;
+            //    //Flogger.Log(LogType.Debug,"new loop ");
+            //    while (nbChunks != 0 && totalChunks < FMaxSamples[0])
+            //    {
+            //        nbChunks = inlet.pull_chunk(sample, timestamps, FTimeOut[0]);
+            //        //Flogger.Log(LogType.Debug,"timestamp: " + nbChunks);
+            //        totalChunks += nbChunks;
+
+            //        // try to fill
+            //        for (int chan = 0; chan < FNBChannels[0]; chan++)
+            //        {
+            //            // Within slices we have chunks
+            //            FData[chan].SliceCount = totalChunks;
+            //            for (int i = 0; i < nbChunks; i++)
+            //            {
+            //                // fill from the end
+            //                FData[chan][totalChunks - nbChunks + i] = sample[i, chan];
+            //            }
+            //        }
+            //    }
+
+            //    for (int chan = 0; chan < FNBChannels[0]; chan++)
+            //    {
+            //        // Within slices we have chunks
+            //        FOutput[chan].SliceCount = FChunkSize;
+            //        for (int i = 0; i < FChunkSize; i++)
+            //        {
+            //            // We move to the correct position
+            //            int pos = chan * FChunkSize + i;
+            //            FOutput[chan][i] = 1;//e.Channels[pos];
+            //        }
+            //    }
+            //}
+        }
     }
 }
