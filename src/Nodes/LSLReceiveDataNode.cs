@@ -21,7 +21,7 @@ namespace VVVV.Nodes
 	
 	//ISpread <double>
 	#region PluginInfo
-	[PluginInfo(Name = "LSLReceiveData", Category = "Value", Help = "Lab Streaming Layer receiving protocol", Tags = "lsl, network")]
+	[PluginInfo(Name = "LSLReceiveData", AutoEvaluate = true, Category = "Value", Help = "Lab Streaming Layer receiving protocol", Tags = "lsl, network")]
 	#endregion PluginInfo
 	
 	public class LSLReceiveDataNode : IPluginEvaluate, IPartImportsSatisfiedNotification
@@ -73,9 +73,6 @@ namespace VVVV.Nodes
 
         //Sample rates
         public Spread<IIOContainer<ISpread<double>>> FSampleRate = new Spread<IIOContainer<ISpread<double>>>();
-
-		//[Output("SampleRate", IsSingle = true) ]
-		//public ISpread<double> FSampleRate;
 
         [Import]
         public IIOFactory FIOFactory;
@@ -203,30 +200,6 @@ namespace VVVV.Nodes
                     }
                 }
             }
-
-
-            //results = liblsl.resolve_stream("type", FResourceType[0], 1, 1);
-
-            //Flogger.Log(LogType.Debug, "Number of streams: " + results.Length);
-
-            //for (int i = 0; i < results.Length; i++)
-            //{
-            //    liblsl.StreamInlet tmpInlet = new liblsl.StreamInlet(results[i], FMaxBufLen[0]);
-            //    liblsl.StreamInfo tmpInfo = tmpInlet.info();
-            //    Flogger.Log(LogType.Debug, "Look at stream name: " + tmpInfo.name());
-            //    if (FResourceName[0].Equals(tmpInfo.name()))
-            //    {
-            //        Flogger.Log(LogType.Debug, "Bingo!");
-            //        // retrieve data
-            //        mInfo = tmpInfo;
-            //        mInlet = tmpInlet;
-            //        FNBChannels[0] = mInfo.channel_count();
-            //        FSampleRate[0] = mInfo.nominal_srate();
-            //        Flogger.Log(LogType.Debug, "Nb channels: " + mInfo.channel_count());
-            //        Flogger.Log(LogType.Debug, "Sample rate: " + mInfo.nominal_srate());
-            //        break;
-            //    }
-            //}
         }
 
         //called when data for any output pin is requested
@@ -237,101 +210,50 @@ namespace VVVV.Nodes
                 Connect();
 
             //Retrieve the data from each stream
-            for(int pin = 0; pin < FResourceNameCount[0]; ++pin)
+            if (FEnabled[0])
             {
-                //Only pull valid streams
-                if (mInlet[pin] != null)
+                for (int pin = 0; pin < FResourceNameCount[0]; ++pin)
                 {
-                    //Pull everything we can
-                    int totalChunks = 0;
-                    double[,] sample = new double[FChunkSize[0], mNbChannel[pin]];
-                    double[] timestamps = new double[FChunkSize[0]];
-                    int nbChunks = -1;
-                    List<List<double>> data = new List<List<double>>();
-                    while (nbChunks != 0 && totalChunks < FMaxSamples[0])
+                    //Only pull valid streams
+                    if (mInlet[pin] != null)
                     {
-                        //Pull the chunks
-                        nbChunks = mInlet[pin].pull_chunk(sample, timestamps, FTimeOut[0]);
-                        totalChunks += nbChunks;
-
-                        //Queue the chunks
-                        for (int i = 0; i < nbChunks; ++i)
+                        //Pull everything we can
+                        int totalChunks = 0;
+                        double[,] sample = new double[FChunkSize[0], mNbChannel[pin]];
+                        double[] timestamps = new double[FChunkSize[0]];
+                        int nbChunks = -1;
+                        List<List<double>> data = new List<List<double>>();
+                        while (nbChunks != 0 && totalChunks < FMaxSamples[0])
                         {
-                            List<double> singleSample = new List<double>();
-                            for(int j = 0; j < mNbChannel[pin]; ++j)
+                            //Pull the chunks
+                            nbChunks = mInlet[pin].pull_chunk(sample, timestamps, FTimeOut[0]);
+                            totalChunks += nbChunks;
+
+                            //Queue the chunks
+                            for (int i = 0; i < nbChunks; ++i)
                             {
-                                singleSample.Add(sample[i, j]);
+                                List<double> singleSample = new List<double>();
+                                for (int j = 0; j < mNbChannel[pin]; ++j)
+                                {
+                                    singleSample.Add(sample[i, j]);
+                                }
+                                data.Add(singleSample);
                             }
-                            data.Add(singleSample);
+
+                            //Reverse order so that the most recent samples are first in the list
+                            data.Reverse();
                         }
 
-                        //Reverse order so that the most recent samples are first in the list
-                        data.Reverse();
-                    }
-
-                    //Output on the pins
-                    FData[pin].IOObject.SliceCount = data.Count;
-                    for(int i = 0; i < data.Count; ++i)
-                    {
-                        FData[pin].IOObject[i].SliceCount = data[i].Count;
-                        FData[pin].IOObject[i].AssignFrom(data[i]);
+                        //Output on the pins
+                        FData[pin].IOObject.SliceCount = data.Count;
+                        for (int i = 0; i < data.Count; ++i)
+                        {
+                            FData[pin].IOObject[i].SliceCount = data[i].Count;
+                            FData[pin].IOObject[i].AssignFrom(data[i]);
+                        }
                     }
                 }
             }
-
-
-
-
-            //// Try to establish connexion when input stream name changed or if
-            //// manually triggered
-            //if (FEnabled[0])
-            //    Connect();
-
-            //if (FNBChannels[0] > 0)
-            //{
-            //    // First slices: channels
-            //    FData.SliceCount = FNBChannels[0];
-
-            //    // VPRN tells us how many values we have and we know the size of a chunk: easy to compute how many channels we receive
-            //    //FNBChannels[0] = 1;// e.Channels.Length / FChunkSize[0];
-
-            //    // pull all we can
-            //    int totalChunks = 0;
-            //    float[,] sample = new float[FChunkSize[0], FNBChannels[0]];
-            //    double[] timestamps = new double[FChunkSize[0]];
-            //    int nbChunks = -1;
-            //    //Flogger.Log(LogType.Debug,"new loop ");
-            //    while (nbChunks != 0 && totalChunks < FMaxSamples[0])
-            //    {
-            //        nbChunks = inlet.pull_chunk(sample, timestamps, FTimeOut[0]);
-            //        //Flogger.Log(LogType.Debug,"timestamp: " + nbChunks);
-            //        totalChunks += nbChunks;
-
-            //        // try to fill
-            //        for (int chan = 0; chan < FNBChannels[0]; chan++)
-            //        {
-            //            // Within slices we have chunks
-            //            FData[chan].SliceCount = totalChunks;
-            //            for (int i = 0; i < nbChunks; i++)
-            //            {
-            //                // fill from the end
-            //                FData[chan][totalChunks - nbChunks + i] = sample[i, chan];
-            //            }
-            //        }
-            //    }
-
-            //    for (int chan = 0; chan < FNBChannels[0]; chan++)
-            //    {
-            //        // Within slices we have chunks
-            //        FOutput[chan].SliceCount = FChunkSize;
-            //        for (int i = 0; i < FChunkSize; i++)
-            //        {
-            //            // We move to the correct position
-            //            int pos = chan * FChunkSize + i;
-            //            FOutput[chan][i] = 1;//e.Channels[pos];
-            //        }
-            //    }
-            //}
         }
     }
 }
