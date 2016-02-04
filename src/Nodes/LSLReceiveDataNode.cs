@@ -136,11 +136,11 @@ namespace VVVV.Nodes
             //Register events on newly created pins
             for (int i = 0; i < FResourceNameCount[0]; ++i)
             {
-                FResourceName[i].IOObject.Changed += IOObject_Changed;
+                FResourceName[i].IOObject.Changed += StreamName_Changed;
             }
         }
 
-        private void IOObject_Changed(IDiffSpread<string> spread)
+        private void StreamName_Changed(IDiffSpread<string> spread)
         {
             //If enabled, recreate connections right away
             if (FEnabled[0])
@@ -195,8 +195,8 @@ namespace VVVV.Nodes
                         mNbChannel[i] = info.channel_count();
                         mSampleRate[i] = info.nominal_srate();
 
-                        //Found, so skip to next stream
-                        break;
+                        ////Found, so skip to next stream
+                        //break;
                     }
                 }
             }

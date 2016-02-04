@@ -55,8 +55,8 @@ namespace VVVV.Nodes
 
 
         //Member variables
-        private liblsl.StreamInfo[] mInfo;
-        private liblsl.StreamOutlet[] mOutlet;
+        private liblsl.StreamInfo[] mInfo = new liblsl.StreamInfo[] { };
+        private liblsl.StreamOutlet[] mOutlet = new liblsl.StreamOutlet[] { };
         private string mStatus;
         #endregion fields & pins
 
@@ -126,12 +126,12 @@ namespace VVVV.Nodes
             FNbChannels.Sync();
             for (int i = 0; i < FResourceNameCount[0]; ++i)
             {
-                FResourceName[i].IOObject.Changed += IOObject_Changed;
+                FResourceName[i].IOObject.Changed += StreamName_Changed;
                 FNbChannels[i].IOObject.Changed += HandleNbChannelChanged;
             }
         }
 
-        private void IOObject_Changed(IDiffSpread<string> spread)
+        private void StreamName_Changed(IDiffSpread<string> spread)
         {
             UpdateStreams();
         }
