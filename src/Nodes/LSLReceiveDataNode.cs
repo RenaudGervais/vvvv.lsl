@@ -195,8 +195,8 @@ namespace VVVV.Nodes
                         mNbChannel[i] = info.channel_count();
                         mSampleRate[i] = info.nominal_srate();
 
-                        ////Found, so skip to next stream
-                        //break;
+                        //Found, so skip to next stream
+                        break;
                     }
                 }
             }
@@ -251,6 +251,10 @@ namespace VVVV.Nodes
                             FData[pin].IOObject[i].SliceCount = data[i].Count;
                             FData[pin].IOObject[i].AssignFrom(data[i]);
                         }
+
+                        FSampleRate[pin].IOObject.SliceCount = mSampleRate.Length;
+                        for (int i = 0; i < mSampleRate.Length; ++i)
+                            FSampleRate[pin].IOObject[i] = mSampleRate[i];
                     }
                 }
             }
