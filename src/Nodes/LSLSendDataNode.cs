@@ -36,7 +36,7 @@ namespace VVVV.Nodes
 		public IDiffSpread<string> FResourceType;
 
         //A spread of Stream names
-        public Spread<IIOContainer<ISpread<string>>> FResourceName = new Spread<IIOContainer<ISpread<string>>>();
+        public Spread<IIOContainer<IDiffSpread<string>>> FResourceName = new Spread<IIOContainer<IDiffSpread<string>>>();
 
         //A spread of data
         public Spread<IIOContainer<ISpread<double>>> FData = new Spread<IIOContainer<ISpread<double>>>();
@@ -120,12 +120,19 @@ namespace VVVV.Nodes
                 }
                 );
 
-            //Register nb channel changed event
+            //Register events on newly created pins
+            FResourceName.Sync();
             FNbChannels.Sync();
-            for (int i = 0; i < FNbChannels.SliceCount; ++i)
+            for (int i = 0; i < FResourceNameCount[0]; ++i)
             {
+                FResourceName[i].IOObject.Changed += IOObject_Changed;
                 FNbChannels[i].IOObject.Changed += HandleNbChannelChanged;
             }
+        }
+
+        private void IOObject_Changed(IDiffSpread<string> spread)
+        {
+            UpdateStreams();
         }
 
         private void HandleNbChannelChanged(IDiffSpread<int> sender)
