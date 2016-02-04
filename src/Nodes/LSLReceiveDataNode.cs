@@ -68,6 +68,9 @@ namespace VVVV.Nodes
         [Config("Stream name count", DefaultValue = 1, MinValue = 0)]
         public IDiffSpread<int> FResourceNameCount;
 
+        // Last received data on this specific frame
+        public Spread<IIOContainer<ISpread<double>>> FInstantData = new Spread<IIOContainer<ISpread<double>>>();
+
         // Spreads of data (where bin size is the number of channels)
         public Spread<IIOContainer<ISpread<ISpread<double>>>> FData = new Spread<IIOContainer<ISpread<ISpread<double>>>>();
 
@@ -83,6 +86,7 @@ namespace VVVV.Nodes
 		private liblsl.StreamInlet[] mInlet;
         private int[] mNbChannel;
         private double[] mSampleRate;
+        private List<List<double>> mInstantData = new List<List<double>>();
 
         public void OnImportsSatisfied()
         {
@@ -113,6 +117,16 @@ namespace VVVV.Nodes
                 );
 
             //Update the output pins
+            HandlePinCountChanged(
+                spread,
+                FInstantData,
+                (i) =>
+                {
+                    var io = new OutputAttribute(string.Format("Last received {0}", i));
+                    return io;
+                }
+                );
+
             HandlePinCountChanged(
                 spread,
                 FData,
@@ -177,6 +191,10 @@ namespace VVVV.Nodes
             mInlet = new liblsl.StreamInlet[FResourceNameCount[0]];
             mNbChannel = new int[FResourceNameCount[0]];
             mSampleRate = new double[FResourceNameCount[0]];
+            mInstantData.Clear();
+            mInstantData = new List<List<double>>(FResourceNameCount[0]);
+            //for (int i = 0; i < FResourceNameCount[0]; ++i)
+            //    mInstantData.Add(new List<double>());
             
             //For each stream name, search for it in the found streams
             for (int i = 0; i < FResourceNameCount[0]; ++i)
@@ -244,6 +262,10 @@ namespace VVVV.Nodes
                         //Reverse order so that the most recent samples are first in the list
                         data.Reverse();
 
+                        //If we received some data this frame, save the last entry
+                        if (data.Count > 0)
+                            mInstantData[pin] = data[0];
+
                         //Output on the pins
                         FData[pin].IOObject.SliceCount = data.Count;
                         for (int i = 0; i < data.Count; ++i)
@@ -251,6 +273,9 @@ namespace VVVV.Nodes
                             FData[pin].IOObject[i].SliceCount = data[i].Count;
                             FData[pin].IOObject[i].AssignFrom(data[i]);
                         }
+
+                        FInstantData[pin].IOObject.SliceCount = mInstantData[pin].Count;
+                        FInstantData[pin].IOObject.AssignFrom(mInstantData[pin]);
 
                         FSampleRate[pin].IOObject.SliceCount = 1;
                         FSampleRate[pin].IOObject[0] = mSampleRate[pin];
