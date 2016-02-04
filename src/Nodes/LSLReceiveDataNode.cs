@@ -56,7 +56,7 @@ namespace VVVV.Nodes
         public IDiffSpread<string> FResourceType;
 
         //A spread of Stream names
-        public Spread<IIOContainer<ISpread<string>>> FResourceName = new Spread<IIOContainer<ISpread<string>>>();
+        public Spread<IIOContainer<IDiffSpread<string>>> FResourceName = new Spread<IIOContainer<IDiffSpread<string>>>();
 
         //A config to specify the number of stream required.
         //@note: ideally, we would only take a spread of Stream Names as input and based on the number of slices, create the according number of output pins but
@@ -94,7 +94,8 @@ namespace VVVV.Nodes
 
         private void FEnabled_Changed(IDiffSpread<bool> spread)
         {
-            throw new NotImplementedException();
+            if (spread[0])
+                Connect();
         }
 
         private void FResourceNameCount_Changed(IDiffSpread<int> spread)
@@ -131,11 +132,26 @@ namespace VVVV.Nodes
                     return io;
                 }
                 );
+
+            //Register events on newly created pins
+            for (int i = 0; i < FResourceNameCount[0]; ++i)
+            {
+                FResourceName[i].IOObject.Changed += IOObject_Changed;
+            }
+        }
+
+        private void IOObject_Changed(IDiffSpread<string> spread)
+        {
+            //If enabled, recreate connections right away
+            if (FEnabled[0])
+                Connect();
         }
 
         private void FResourceType_Changed(IDiffSpread<string> spread)
         {
-            throw new NotImplementedException();
+            //If enabled, recreate connections right away
+            if (FEnabled[0])
+                Connect();
         }
 
         private void HandlePinCountChanged<T>(ISpread<int> countSpread, Spread<IIOContainer<T>> pinSpread, Func<int, IOAttribute> ioAttributeFactory) where T : class
