@@ -184,8 +184,11 @@ namespace VVVV.Nodes
             if (name.Length == nbChannel.Length)
             {
                 int nbStream = name.Length;
+
+                //We recreate all the streams
                 mInfo = new liblsl.StreamInfo[nbStream];
                 mOutlet = new liblsl.StreamOutlet[nbStream];
+                GC.Collect();   //@WARNING: Probably bad to call garbage collector here, but we need to close the streams before opening new ones
                 for (int i = 0; i < nbStream; ++i)
                 {
                     mInfo[i] = new liblsl.StreamInfo(name[i], type, nbChannel[i]);
