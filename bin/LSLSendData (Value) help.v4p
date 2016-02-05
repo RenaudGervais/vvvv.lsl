@@ -133,6 +133,8 @@
    </PIN>
    <PIN pinname="Descriptive Name" slicecount="1" values="Send">
    </PIN>
+   <PIN pinname="X Input Value" slicecount="1" values="0">
+   </PIN>
    </NODE>
    <LINK srcnodeid="9" srcpinname="Y Output Value" dstnodeid="0" dstpinname="Send">
    </LINK>
