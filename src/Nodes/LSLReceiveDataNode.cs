@@ -117,12 +117,14 @@ namespace VVVV.Nodes
                 );
 
             //Update the output pins
+            int nbOutputPins = 3;
             HandlePinCountChanged(
                 spread,
                 FInstantData,
                 (i) =>
                 {
                     var io = new OutputAttribute(string.Format("Last received {0}", i));
+                    io.Order = i * nbOutputPins;
                     return io;
                 }
                 );
@@ -133,6 +135,8 @@ namespace VVVV.Nodes
                 (i) =>
                 {
                     var io = new OutputAttribute(string.Format("Data stream {0}", i));
+                    io.Order = i * nbOutputPins + 1;
+                    io.BinOrder = i * nbOutputPins + 2;
                     return io;
                 }
                 );
@@ -143,6 +147,7 @@ namespace VVVV.Nodes
                 (i) =>
                 {
                     var io = new OutputAttribute(string.Format("Sample rate {0}", i));
+                    io.Order = i * nbOutputPins + 3;
                     return io;
                 }
                 );
