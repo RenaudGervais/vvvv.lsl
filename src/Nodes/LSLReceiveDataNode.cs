@@ -190,10 +190,10 @@ namespace VVVV.Nodes
             mNbChannel = new int[FResourceNameCount[0]];
             mSampleRate = new double[FResourceNameCount[0]];
             mInstantData.Clear();
-            mInstantData = new List<List<double>>(FResourceNameCount[0]);
-            //for (int i = 0; i < FResourceNameCount[0]; ++i)
-            //    mInstantData.Add(new List<double>());
-            
+            //mInstantData = new List<List<double>>(FResourceNameCount[0]);
+            for (int i = 0; i < FResourceNameCount[0]; ++i)
+                mInstantData.Add(new List<double>());
+
             //For each stream name, search for it in the found streams
             for (int i = 0; i < FResourceNameCount[0]; ++i)
             {
@@ -260,9 +260,9 @@ namespace VVVV.Nodes
                         //Reverse order so that the most recent samples are first in the list
                         data.Reverse();
 
-                        ////If we received some data this frame, save the last entry
-                        //if (data.Count > 0)
-                        //    mInstantData[pin] = data[0];
+                        //If we received some data this frame, save the last entry
+                        if (data.Count > 0)
+                            mInstantData[pin] = data[0];
 
                         //Output on the pins
                         FData[pin].IOObject.SliceCount = data.Count;
@@ -272,8 +272,8 @@ namespace VVVV.Nodes
                             FData[pin].IOObject[i].AssignFrom(data[i]);
                         }
 
-                        //FInstantData[pin].IOObject.SliceCount = mInstantData[pin].Count;
-                        //FInstantData[pin].IOObject.AssignFrom(mInstantData[pin]);
+                        FInstantData[pin].IOObject.SliceCount = mInstantData[pin].Count;
+                        FInstantData[pin].IOObject.AssignFrom(mInstantData[pin]);
 
                         FSampleRate[pin].IOObject.SliceCount = 1;
                         FSampleRate[pin].IOObject[0] = mSampleRate[pin];
