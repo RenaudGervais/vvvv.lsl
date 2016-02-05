@@ -183,9 +183,7 @@ namespace VVVV.Nodes
 
         void Connect()
         {
-            //Find all the streams of the specified type
             liblsl.StreamInfo[] streamInfo;
-            streamInfo = liblsl.resolve_stream("type", FResourceType[0], 1, FTimeOut[0]);
 
             mInfo = new liblsl.StreamInfo[FResourceNameCount[0]];
             mInlet = new liblsl.StreamInlet[FResourceNameCount[0]];
@@ -199,24 +197,24 @@ namespace VVVV.Nodes
             //For each stream name, search for it in the found streams
             for (int i = 0; i < FResourceNameCount[0]; ++i)
             {
-                foreach (liblsl.StreamInfo info in streamInfo)
+                //Try to find each specific stream
+                streamInfo = liblsl.resolve_stream(string.Format("type='{0}' and name='{1}'", FResourceType[0], FResourceName[i].IOObject[0]), 1, FTimeOut[0]);
+
+                //If a stream is found save the first found stream
+                if (streamInfo.Length > 0)
                 {
-                    if (info.name().Equals(FResourceName[i].IOObject[0]))
-                    {
-                        //Safe info of found stream
-                        mInfo[i] = info;
+                    liblsl.StreamInfo info = streamInfo[0];
+                    //Save info of found stream
+                    mInfo[i] = info;
 
-                        //Create stream inlet
-                        mInlet[i] = new liblsl.StreamInlet(info, FMaxBufLen[0]);
+                    //Create stream inlet
+                    mInlet[i] = new liblsl.StreamInlet(info, FMaxBufLen[0]);
 
-                        //Get info from the stream
-                        mNbChannel[i] = info.channel_count();
-                        mSampleRate[i] = info.nominal_srate();
-
-                        //Found, so skip to next stream
-                        break;
-                    }
+                    //Get info from the stream
+                    mNbChannel[i] = info.channel_count();
+                    mSampleRate[i] = info.nominal_srate();
                 }
+
             }
         }
 
@@ -262,9 +260,9 @@ namespace VVVV.Nodes
                         //Reverse order so that the most recent samples are first in the list
                         data.Reverse();
 
-                        //If we received some data this frame, save the last entry
-                        if (data.Count > 0)
-                            mInstantData[pin] = data[0];
+                        ////If we received some data this frame, save the last entry
+                        //if (data.Count > 0)
+                        //    mInstantData[pin] = data[0];
 
                         //Output on the pins
                         FData[pin].IOObject.SliceCount = data.Count;
@@ -274,8 +272,8 @@ namespace VVVV.Nodes
                             FData[pin].IOObject[i].AssignFrom(data[i]);
                         }
 
-                        FInstantData[pin].IOObject.SliceCount = mInstantData[pin].Count;
-                        FInstantData[pin].IOObject.AssignFrom(mInstantData[pin]);
+                        //FInstantData[pin].IOObject.SliceCount = mInstantData[pin].Count;
+                        //FInstantData[pin].IOObject.AssignFrom(mInstantData[pin]);
 
                         FSampleRate[pin].IOObject.SliceCount = 1;
                         FSampleRate[pin].IOObject[0] = mSampleRate[pin];
