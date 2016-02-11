@@ -249,7 +249,7 @@ namespace VVVV.Nodes
                         while (nbChunks != 0 && totalChunks < FMaxSamples[0])
                         {
                             //Pull the chunks
-                            nbChunks = mInlet[pin].pull_chunk(sample, timestamps, FTimeOut[0]);
+                            nbChunks = mInlet[pin].pull_chunk(sample, timestamps, 0);
                             totalChunks += nbChunks;
 
                             //Queue the chunks
