@@ -199,27 +199,29 @@ namespace VVVV.Nodes
             for (int i = 0; i < FResourceNameCount[0]; ++i)
                 mInstantData.Add(new List<double>());
 
+            //Check the different available streams on the server
+            streamInfo = liblsl.resolve_stream("type", FResourceType[0], 1, FTimeOut[0]);
+
             //For each stream name, search for it in the found streams
             for (int i = 0; i < FResourceNameCount[0]; ++i)
             {
-                //Try to find each specific stream
-                streamInfo = liblsl.resolve_stream(string.Format("type='{0}' and name='{1}'", FResourceType[0], FResourceName[i].IOObject[0]), 1, FTimeOut[0]);
-
-                //If a stream is found save the first found stream
-                if (streamInfo.Length > 0)
+                foreach(liblsl.StreamInfo info in streamInfo)
                 {
-                    liblsl.StreamInfo info = streamInfo[0];
-                    //Save info of found stream
-                    mInfo[i] = info;
+                    if (info.name().Equals(FResourceName[i].IOObject[0]))
+                    {
+                        //Save info of found stream
+                        mInfo[i] = info;
 
-                    //Create stream inlet
-                    mInlet[i] = new liblsl.StreamInlet(info, FMaxBufLen[0]);
+                        //Create stream inlet
+                        mInlet[i] = new liblsl.StreamInlet(info, FMaxBufLen[0]);
 
-                    //Get info from the stream
-                    mNbChannel[i] = info.channel_count();
-                    mSampleRate[i] = info.nominal_srate();
+                        //Get info from the stream
+                        mNbChannel[i] = info.channel_count();
+                        mSampleRate[i] = info.nominal_srate();
+
+                        break;
+                    }
                 }
-
             }
         }
 
